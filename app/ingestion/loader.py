@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import tempfile
 from typing import List
 
@@ -34,6 +35,32 @@ def _derive_document_title(s3_key: str) -> str:
             words.append(word.capitalize())
 
     return " ".join(words)
+
+def _normalize_text(text: str) -> str:
+    text = text.replace("\x00", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _should_skip_page(text: str) -> bool:
+    if not text or len(text.strip()) < 200:
+        return True
+
+    upper_text = text.upper()
+
+    skip_markers = [
+        "TABLE OF CONTENTS",
+        "POLICY ALERT",
+        "USCIS IS UPDATING POLICY GUIDANCE",
+    ]
+
+    if any(marker in upper_text for marker in skip_markers):
+        return True
+
+    if text.count("Chapter") >= 5:
+        return True
+
+    return False
 
 
 def get_s3_client():
@@ -71,17 +98,26 @@ def load_pdf_from_s3(s3_key: str) -> List[Document]:
 
     try:
         loader = PyPDFLoader(tmp_path)
-        pages = loader.load()
+        raw_pages = loader.load()
 
         document_title = _derive_document_title(s3_key)
+        cleaned_pages: List[Document] = []
 
-        for idx, page in enumerate(pages, start=1):
+        for idx, page in enumerate(raw_pages, start=1):
+            cleaned_text = _normalize_text(page.page_content)
+
+            if _should_skip_page(cleaned_text):
+                continue
+
+            page.page_content = cleaned_text
             page.metadata["document_title"] = document_title
             page.metadata["page_number"] = idx
             page.metadata["source_key"] = s3_key
             page.metadata["s3_bucket"] = settings.s3_bucket_name
 
-        return pages
+            cleaned_pages.append(page)
+
+        return cleaned_pages
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 

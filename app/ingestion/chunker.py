@@ -21,9 +21,6 @@ def clean_text(text: str) -> str:
         r"^\s*Current as of.*$",
         r"^\s*\d{1,2}/\d{1,2}/\d{2,4},.*$",
         r"^\s*https?://.*$",
-        r"^\s*Chapter\s+\d+\s*-\s*.*$",
-        r"^\s*Part\s+[A-Z]\s*-\s*.*$",
-        r"^\s*Volume\s+\d+\s*-\s*.*$",
     ]
 
     for line in lines:
@@ -42,25 +39,57 @@ def clean_text(text: str) -> str:
     cleaned_text = re.sub(r"\n{2,}", "\n", cleaned_text).strip()
     return cleaned_text
 
+def should_skip_page(text: str) -> bool:
+    if not text:
+        return True
+
+    normalized = text.strip()
+    upper_text = normalized.upper()
+
+    if len(normalized) < 200:
+        return True
+
+    skip_markers = [
+        "TABLE OF CONTENTS",
+        "POLICY ALERT",
+        "USCIS IS UPDATING POLICY GUIDANCE",
+        "SEARCH USCIS POLICY MANUAL SEARCH",
+        "READ MORE",
+        "AFFECTED SECTIONS",
+    ]
+
+    if any(marker in upper_text for marker in skip_markers):
+        return True
+
+    if normalized.count("Chapter") >= 5:
+        return True
+
+    if normalized.count("Part ") >= 5:
+        return True
+
+    return False
+
+
 
 def chunk_documents(pages: list[Document]) -> list[Document]:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
         separators=["\n\n", "\n", ". ", " ", ""],
     )
 
     cleaned_pages = []
+
     for page in pages:
         cleaned = clean_text(page.page_content)
 
-        if not cleaned or len(cleaned) < 100:
+        if should_skip_page(cleaned):
             continue
 
         cleaned_pages.append(
             Document(
                 page_content=cleaned,
-                metadata=page.metadata,
+                metadata=page.metadata.copy(),
             )
         )
 
