@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     )
 
     #AWS
-    aws_region:str = "us-est-1"
+    aws_region: str = "us-est-1"
     aws_access_key_id: str
     aws_secret_access_key: str
 
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     #Models
     embedding_model_id: str = "amazon.titan-embed-text-v2:0"
-    chat_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    chat_model_id: str = "anthropic.claude-3-7-sonnet-20250219-v1:0"
 
     # Chunking
     chunk_size: int = 1000
