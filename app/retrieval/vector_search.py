@@ -1,6 +1,5 @@
 from typing import List, Dict, Any
 import math
-import re
 
 import psycopg
 
@@ -11,7 +10,7 @@ from app.embeddings.titan_embedder import TitanEmbedder
 class VectorSearcher:
     DEFAULT_K = 5
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.embedder = TitanEmbedder()
 
     def _to_vector_literal(self, values: list[float]) -> str:
@@ -32,10 +31,24 @@ class VectorSearcher:
             or "become a u.s. citizen" in q
             or "become an american citizen" in q
             or "become citizen" in q
+            or "u.s. citizen" in q
+            or "us citizen" in q
+            or "citizenship" in q
+            or "naturalization" in q
             or "get citizenship" in q
             or "apply for citizenship" in q
         ):
             return "eligibility requirements for naturalization"
+        
+        if (
+            ("18" in q or "18 years old" in q or "age" in q)
+            and (
+                "citizen" in q
+                or "citizenship" in q
+                or "naturalization" in q
+            )
+        ):
+            return "naturalization minimum age requirement 18 years old"
 
         if (
             "left the country" in q
@@ -91,45 +104,6 @@ class VectorSearcher:
             "similarity": 1 - distance,
             "matched_query": matched_query,
         }
-
-
-    def _tokenize(self, text: str) -> set[str]:
-        words = re.findall(r"\b[a-zA-Z0-9]+\b", text.lower())
-        stop_words = {
-            "the", "a", "an", "and", "or", "of", "to", "in", "for", "on",
-            "at", "by", "is", "are", "was", "were", "be", "do", "does",
-            "did", "how", "what", "when", "where", "why", "can", "i", "you",
-            "it", "this", "that", "with", "as", "from", "your"
-        }
-        return {word for word in words if word not in stop_words and len(word) > 1}
-
-
-    def _keyword_overlap_score(self, query: str, content: str) -> float:
-        query_tokens = self._tokenize(query)
-        content_tokens = self._tokenize(content)
-
-        if not query_tokens:
-            return 0.0
-
-        overlap = query_tokens.intersection(content_tokens)
-        return len(overlap) / len(query_tokens)
-
-
-    def _rerank_results(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        reranked = []
-
-        for result in results:
-            similarity = result.get("similarity", 0.0) or 0.0
-            overlap_score = self._keyword_overlap_score(query, result["content"])
-            hybrid_score = (0.8 * similarity) + (0.2 * overlap_score)
-
-            updated = dict(result)
-            updated["overlap_score"] = overlap_score
-            updated["hybrid_score"] = hybrid_score
-            reranked.append(updated)
-
-        reranked.sort(key=lambda r: r["hybrid_score"], reverse=True)
-        return reranked
 
 
     def search(self, query: str, k:int = DEFAULT_K) -> List[Dict[str, Any]]:

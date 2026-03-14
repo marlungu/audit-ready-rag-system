@@ -6,7 +6,8 @@ from app.rag.query_logger import log_query
 from app.config import settings
 
 
-MAX_CONTEXT_CHUNKS = 4
+MAX_CONTEXT_CHUNKS = 3
+MIN_CONTEXT_SIMILARITY = 0.65
 
 
 class AnswerGenerator:
@@ -14,14 +15,28 @@ class AnswerGenerator:
         self.searcher = VectorSearcher()
         self.llm = BedrockClaudeClient()
 
-    def build_prompt(self, question: str, results: list[dict]) -> str:
+
+    def _select_context_chunks(self, results: list[dict]) -> list[dict]:
+        strong_results = [
+            r for r in results
+            if (r.get("similarity") is None or r["similarity"] >= MIN_CONTEXT_SIMILARITY)
+        ]
+
+        if strong_results:
+            return strong_results[:MAX_CONTEXT_CHUNKS]
+
+        return results[:1]
+    
+
+    def build_prompt(self, question: str, results: list[dict]) -> tuple[str, list[dict]]:
+        used_chunks = self._select_context_chunks(results)
         context_blocks = []
 
-        for r in results[:MAX_CONTEXT_CHUNKS]:
+        for r in used_chunks:
             meta = r["metadata"]
 
             source_label = (
-            f"Vol 12 | page {meta['page_number']} | chunk {meta['chunk_index']}"
+                f"Vol 12 | page {meta['page_number']} | chunk {meta['chunk_index']}"
             )
 
             block = (
@@ -60,14 +75,14 @@ Question:
 
 Answer:
 """
-        return prompt.strip()
+        return prompt.strip(), used_chunks
 
     def answer(self, question: str, k: int | None = None) -> dict:
         if k is None:
             k = settings.top_k
 
         results = self.searcher.search(question, k=k)
-        prompt = self.build_prompt(question, results=results)
+        prompt, used_chunks = self.build_prompt(question, results=results)
         answer_text = self.llm.generate(prompt)
 
         log_query(
@@ -80,6 +95,7 @@ Answer:
         return {
             "question": question,
             "answer": answer_text,
-            "sources": [r["metadata"] for r in results],
-            "retrieved_chunks": results,
+            "sources": [r["metadata"] for r in used_chunks],
+            "retrieved_chunks": used_chunks,
+            "used_chunks": used_chunks,
         }

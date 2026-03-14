@@ -24,6 +24,7 @@ def main():
 
         print("\nAnswer:\n")
         print(result["answer"])
+        print(f"\nContext sent to Claude: {len(result['used_chunks'])} chunks")
 
         print("\nRetrieved Chunks:\n")
 
