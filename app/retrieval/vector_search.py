@@ -133,6 +133,7 @@ class VectorSearcher:
 
         with psycopg.connect(psycopg_url) as conn:
             with conn.cursor() as cur:   
+                cur.execute("SET ivfflat.probes = %s;", (10,))
                 cur.execute(sql, (vector_literal, vector_literal, int(k)))
                 rows = cur.fetchall()
 

@@ -31,16 +31,6 @@ def initialize_database() -> None:
         connection.execute(
             text(
                 """
-                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding
-                ON document_chunks
-                USING ivfflat (embedding vector_cosine_ops);
-                """
-            )
-        )
-
-        connection.execute(
-            text(
-                """
                 CREATE TABLE IF NOT EXISTS query_logs (
                     id BIGSERIAL PRIMARY KEY,
                     question TEXT NOT NULL,
@@ -55,6 +45,31 @@ def initialize_database() -> None:
         )
 
         print("Database schema initialized successfully.")
+
+
+def create_vector_index() -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
+                ON document_chunks
+                USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = 50);
+                """
+            )
+        )
+
+        connection.execute(
+            text(
+                """
+                ANALYZE document_chunks;
+                """
+            )
+        )
+
+        print("IVFFLAT index created successfully.")
+
 
 
 if __name__ == "__main__":
