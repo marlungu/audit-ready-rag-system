@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -10,6 +11,7 @@ HEADING_PATTERNS = [
     r"^\s*Volume\s+\d+\b.*$",
     r"^\s*Part\s+[A-Z]\b.*$",
     r"^\s*Chapter\s+\d+\b.*$",
+    r"^\s*[A-Z]\.\s+.*$",
 ]
 
 
@@ -40,71 +42,95 @@ def clean_text(text: str) -> str:
             continue
 
         cleaned_lines.append(line)
-
-    cleaned_text = "\n".join(cleaned_lines)
-    cleaned_text = re.sub(r"\n{2,}", "\n", cleaned_text).strip()
-    return cleaned_text
-
-def should_skip_page(text: str) -> bool:
-    if not text:
-        return True
-
-    normalized = text.strip()
-    upper_text = normalized.upper()
-
-    if len(normalized) < 200:
-        return True
-
-    skip_markers = [
-        "TABLE OF CONTENTS",
-        "POLICY ALERT",
-        "USCIS IS UPDATING POLICY GUIDANCE",
-        "SEARCH USCIS POLICY MANUAL SEARCH",
-        "READ MORE",
-        "AFFECTED SECTIONS",
-    ]
-
-    if any(marker in upper_text for marker in skip_markers):
-        return True
-
-    if normalized.count("Chapter") >= 5:
-        return True
-
-    if normalized.count("Part ") >= 5:
-        return True
-
-    return False
+        
+    return "\n".join(cleaned_lines).strip()
 
 
-def extract_heading_context(text: str) -> str:
-    headings = []
-
-    for line in text.splitlines():
-        stripped = line.strip()
-        if any(re.match(pattern, stripped, re.IGNORECASE) for pattern in HEADING_PATTERNS):
-            headings.append(stripped)
-
-    # Keep only the first few distinct headings to avoid noisy repetition
-    deduped = []
-    seen = set()
-
-    for heading in headings:
-        key = heading.lower()
-        if key not in seen:
-            deduped.append(heading)
-            seen.add(key)
-
-    return " | ".join(deduped[:3])
+def is_heading(line: str) -> bool:
+    return any(re.match(pattern, line, re.IGNORECASE) for pattern in HEADING_PATTERNS)
 
 
-def add_section_context(text: str) -> str:
-    heading_context = extract_heading_context(text)
 
-    if not heading_context:
-        return text
+def build_sections(pages: List[Document]) -> List[Document]:
+    sections: List[Document] = []
 
-    return f"{heading_context}\n\n{text}"
+    current_heading_parts: List[str] = []
+    current_body_lines: List[str] = []
+    current_metadata = None
 
+    def flush_section():
+        nonlocal current_heading_parts, current_body_lines, current_metadata
+
+        if not current_body_lines or not current_metadata:
+            return
+
+        heading_text = " | ".join(current_heading_parts).strip()
+        body_text = "\n".join(current_body_lines).strip()
+
+        if heading_text:
+            full_text = f"{heading_text}\n\n{body_text}"
+        else:
+            full_text = body_text
+
+        section_doc = Document(
+            page_content=full_text,
+            metadata={
+                **current_metadata,
+                "section_heading": heading_text,
+            },
+        )
+        sections.append(section_doc)
+
+        current_body_lines = []
+
+    for page in pages:
+        cleaned = clean_text(page.page_content)
+        if not cleaned:
+            continue
+
+        lines = cleaned.splitlines()
+
+        if current_metadata is None:
+            current_metadata = page.metadata.copy()
+
+        for line in lines:
+            if is_heading(line):
+                if re.match(r"^\s*Volume\s+\d+\b.*$", line, re.IGNORECASE):
+                    flush_section()
+                    current_heading_parts = [line]
+                    current_metadata = page.metadata.copy()
+                elif re.match(r"^\s*Part\s+[A-Z]\b.*$", line, re.IGNORECASE):
+                    flush_section()
+                    current_heading_parts = [
+                        h for h in current_heading_parts
+                        if not re.match(r"^\s*Part\s+[A-Z]\b.*$", h, re.IGNORECASE)
+                        and not re.match(r"^\s*Chapter\s+\d+\b.*$", h, re.IGNORECASE)
+                        and not re.match(r"^\s*[A-Z]\.\s+.*$", h, re.IGNORECASE)
+                    ]
+                    current_heading_parts.append(line)
+                    current_metadata = page.metadata.copy()
+                elif re.match(r"^\s*Chapter\s+\d+\b.*$", line, re.IGNORECASE):
+                    flush_section()
+                    current_heading_parts = [
+                        h for h in current_heading_parts
+                        if not re.match(r"^\s*Chapter\s+\d+\b.*$", h, re.IGNORECASE)
+                        and not re.match(r"^\s*[A-Z]\.\s+.*$", h, re.IGNORECASE)
+                    ]
+                    current_heading_parts.append(line)
+                    current_metadata = page.metadata.copy()
+                else:
+                    flush_section()
+                    current_heading_parts = [
+                        h for h in current_heading_parts
+                        if not re.match(r"^\s*[A-Z]\.\s+.*$", h, re.IGNORECASE)
+                    ]
+                    current_heading_parts.append(line)
+                    current_metadata = page.metadata.copy()
+            else:
+                current_body_lines.append(line)
+
+    flush_section()
+    return sections
 
 
 def chunk_documents(pages: list[Document]) -> list[Document]:
@@ -114,24 +140,9 @@ def chunk_documents(pages: list[Document]) -> list[Document]:
         separators=["\n\n", "\n", ". ", " ", ""],
     )
 
-    enriched_pages = []
-
-    for page in pages:
-        cleaned = clean_text(page.page_content)
-
-        if should_skip_page(cleaned):
-            continue
-
-        enriched_text = add_section_context(cleaned)
-
-        enriched_pages.append(
-            Document(
-                page_content=enriched_text,
-                metadata=page.metadata.copy(),
-            )
-        )
-
-    chunks = splitter.split_documents(enriched_pages)
+    
+    section_docs = build_sections(pages)
+    chunks = splitter.split_documents(section_docs)
 
     for i, chunk in enumerate(chunks):
         chunk.metadata["chunk_index"] = i

@@ -4,36 +4,45 @@ from app.rag.answer_generator import AnswerGenerator
 def main():
     generator = AnswerGenerator()
 
-    question = input("Ask a USCIS policy question: ").strip()
+    print("USCIS Policy Assistant")
+    print("Type 'exit' to quit.\n")
 
-    if not question:
-        print("No question provided.")
-        return
+    while True:
+        question = input("Ask a USCIS policy question: ").strip()
 
-    result = generator.answer(question)
+        if not question:
+            continue
 
-    print("\nAnswer:\n")
-    print(result["answer"])
+        if question.lower() in {"exit", "quit", "q"}:
+            print("Goodbye.")
+            break
 
-    print("\nRetrieved Chunks:\n")
-    for i, chunk in enumerate(result["retrieved_chunks"], start=1):
-        meta = chunk["metadata"]
-        preview = chunk["content"][:220].replace("\n", " ")
+        result = generator.answer(question)
 
-        similarity = chunk.get("similarity")
-        distance = chunk.get("distance")
+        print("\nAnswer:\n")
+        print(result["answer"])
 
-        print(
-            f"{i}. {meta['document_title']} | page {meta['page_number']} | "
-            f"chunk {meta['chunk_index']}"
-        )
+        print("\nRetrieved Chunks:\n")
+        for i, chunk in enumerate(result["retrieved_chunks"], start=1):
+            meta = chunk["metadata"]
+            preview = chunk["content"][:220].replace("\n", " ")
 
-        if similarity is not None and distance is not None:
+            similarity = chunk.get("similarity")
+            distance = chunk.get("distance")
+
             print(
-                f"   similarity={similarity:.4f} | distance={distance:.4f}"
+                f"{i}. {meta['document_title']} | page {meta['page_number']} | "
+                f"chunk {meta['chunk_index']}"
             )
-            
-        print(f"   {preview}...\n")
+
+            if similarity is not None and distance is not None:
+                print(
+                    f"   similarity={similarity:.4f} | distance={distance:.4f}"
+                )
+                
+            print(f"   {preview}...\n")
+        
+        print("-" * 80)
 
 
 if __name__ == "__main__":
