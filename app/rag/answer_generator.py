@@ -112,7 +112,7 @@ class AnswerGenerator:
     # Public API
     # ------------------------------------------------------------------
 
-    def answer(self, question: str, k: int | None = None) -> QueryResponse:
+    def answer(self, question: str, top_k: int | None = None) -> QueryResponse:
         if top_k is None:
             top_k = settings.top_k
 
@@ -130,7 +130,7 @@ class AnswerGenerator:
         if confidence == ConfidenceLevel.INSUFFICIENT:
             answer_text = INSUFFICIENT_ANSWER
         else:
-            prompt = self._build_prompt(question, used_chunks)
+            prompt = self.build_prompt(question, used_chunks)
             raw_answer = self.llm.generate(prompt)
 
             # Clean boilerplate the model sometimes appends

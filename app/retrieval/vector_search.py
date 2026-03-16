@@ -119,10 +119,8 @@ class VectorSearcher:
 
         with psycopg.connect(settings.psycopg_url) as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SET ivfflat.probes = %s;",
-                    (settings.ivfflat_probes,),
-                )
+                probes = max(1, int(settings.ivfflat_probes))
+                cur.execute(f"SET ivfflat.probes = {probes};")
 
                 for query_text in queries:
                     embedding = self.embedder.embed_text(query_text)
