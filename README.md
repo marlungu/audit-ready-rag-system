@@ -1,268 +1,407 @@
 
-## Project Overview
+# USCIS Policy RAG
+Reference implementation of a governance-aware Retrieval-Augmented Generation system for answering questions about the USCIS Policy Manual.
+Production-grade Retrieval-Augmented Generation (RAG) system for answering questions about the USCIS Policy Manual. Designed with auditability, traceability, and reliability in mind.
 
-USCIS Policy RAG is a Retrieval-Augmented Generation system that enables semantic search and question answering over USCIS policy manuals using:
+**Stack:** AWS Bedrock (Claude Sonnet) | Amazon Titan Embeddings | PostgreSQL + pgvector | FastAPI | Docker
 
-- Amazon Bedrock (Claude Sonnet) for answer generation
-- Amazon Titan embeddings for semantic search
-- PostgreSQL + pgvector for vector storage
-- S3-based document ingestion pipeline
-- Python CLI interface for querying
+![Architecture Diagram](docs/architecture.png)
+*Architecture overview showing ingestion, retrieval, and governance layers.*
 
 ---
 
-## USCIS Policy RAG — System Architecture
+## What This System Does
 
-This system indexes the USCIS Policy Manual and enables grounded question answering using Amazon Titan embeddings, PostgreSQL + pgvector vector search, and Claude on Bedrock.
+This system indexes the USCIS Policy Manual and answers immigration policy questions with grounded, citation-backed responses. Each response includes source citations, a confidence classification, and a query audit record.
 
+The project demonstrates how a RAG system can be built for regulated environments where answer quality and traceability are required.
+
+### Key Capabilities
+
+- **LLM-powered query rewriting** that translates casual questions into precise immigration terminology for better retrieval
+- **Maximal Marginal Relevance (MMR) re-ranking** that selects chunks that are both relevant and diverse, reducing redundant context
+- **Three-tier confidence classification** (high, low, insufficient) that surfaces retrieval uncertainty to the end user
+- **Full audit trail** logging every query with model version, embedding model, temperature, expanded queries, and which chunks informed the answer
+- **Chunk quality validation** that catches corrupted extractions, garbled text, and missing metadata before they enter the vector store
+- **Section-aware chunking** that preserves legal document structure (Volume > Part > Chapter > subsection) during ingestion
+
+---
+
+## System Architecture
 
 ```mermaid
 flowchart TB
 
-%% -------------------------
-%% Offline Indexing Pipeline
-%% -------------------------
+subgraph INGEST["Offline Ingestion Pipeline"]
+    S3["S3 Bucket\nUSCIS Policy Manual PDF"]
+    LOAD["PDF Loader\n(PyPDF + S3)"]
+    CLEAN["Text Cleaning\n+ Page Filtering"]
+    SECTION["Section-Aware\nChunking"]
+    QA["Quality Validation\nGate"]
+    EMBED["Titan Embeddings\n(1024-dim)"]
+    STORE[("PostgreSQL\n+ pgvector")]
+    INDEX["IVFFLAT\nVector Index"]
 
-subgraph OFF[Offline Indexing Pipeline]
-S3[S3 Bucket<br>USCIS Policy Manual PDF]
-LOAD[PDF Loader]
-CHUNK[Section-aware Chunking]
-EMBED[Titan Embeddings]
-STORE[(PostgreSQL + pgvector)]
-INDEX[IVFFLAT Vector Index]
-
-S3 --> LOAD
-LOAD --> CHUNK
-CHUNK --> EMBED
-EMBED --> STORE
-STORE --> INDEX
+    S3 --> LOAD --> CLEAN --> SECTION --> QA --> EMBED --> STORE --> INDEX
 end
 
+subgraph QUERY["Online Question Answering"]
+    USER["User Question"]
+    API["FastAPI\nEndpoint"]
+    REWRITE["LLM Query\nRewriter"]
+    QEMBED["Titan Query\nEmbedding"]
+    SEARCH["Multi-Query\nVector Search"]
+    MMR["MMR\nRe-Ranking"]
+    CONF["Confidence\nClassification"]
+    PROMPT["Prompt\nBuilder"]
+    CLAUDE["Claude via\nBedrock"]
+    ANSWER["Grounded Answer\n+ Citations"]
 
-%% -------------------------
-%% Online Question Answering
-%% -------------------------
-
-subgraph ON[Online Question Answering]
-
-USER[User Question]
-NORM[Query Normalization + Expansion]
-QEMBED[Titan Query Embedding]
-SEARCH[pgvector Similarity Search]
-FILTER[Context Filtering]
-PROMPT[Prompt Builder]
-CLAUDE[Claude via Bedrock]
-ANSWER[Grounded Answer with Citations]
-
-USER --> NORM
-NORM --> QEMBED
-QEMBED --> SEARCH
-SEARCH --> FILTER
-FILTER --> PROMPT
-PROMPT --> CLAUDE
-CLAUDE --> ANSWER
-
+    USER --> API --> REWRITE --> QEMBED --> SEARCH --> MMR --> CONF
+    CONF -->|high / low| PROMPT --> CLAUDE --> ANSWER
+    CONF -->|insufficient| ANSWER
 end
 
+INDEX -.-> SEARCH
 
-%% Vector link between pipelines
-
-INDEX --> SEARCH
-
-
-%% -------------------------
-%% Governance Layer
-%% -------------------------
-
-subgraph GOV[Governance & Observability]
-
-QLOG[(Query Logs)]
-TRACE[(Prompt / Response Trace)]
-MODEL[(Model Metadata)]
-
+subgraph AUDIT["Governance & Observability"]
+    ALOG[("query_audit_log\n- query_id\n- model versions\n- confidence level\n- chunks used\n- temperature")]
 end
 
-
-USER -.-> QLOG
-PROMPT -.-> TRACE
-CLAUDE -.-> MODEL
-ANSWER -.-> QLOG
+API -.-> ALOG
+ANSWER -.-> ALOG
 ```
 
-## Example Query and Output
+---
 
-Below is an example interaction with the USCIS Policy RAG system.
+## Example Output
 
-### Question
-
-```
-What are the eligibility requirements for naturalization?
-```
-### Answer
+### High confidence query
 
 ```
-To qualify for naturalization, an applicant must generally:
+Question: What are the eligibility requirements for naturalization?
 
-• Be at least 18 years old  
-• Be a lawful permanent resident  
-• Maintain continuous residence in the United States  
-• Demonstrate physical presence in the U.S. for the required period  
-• Demonstrate good moral character  
-• Pass the English and civics tests  
-• Take an oath of allegiance to the United States
+Confidence: HIGH
+Top Similarity: 0.8247
+
+Answer:
+The general eligibility requirements for naturalization under USCIS policy
+are as follows:
+
+1. Lawful Permanent Resident (LPR) Status
+2. Continuous Residence (generally five years)
+3. Physical Presence (at least 30 months out of five years)
+4. State/District Residency (at least three months prior to filing)
+5. Good Moral Character (five years prior to filing through Oath)
+6. Attachment to Constitutional Principles
+7. English Language and Civics Knowledge
+
+Sources:
+  - USCIS Policy Manual Full 2026, PDF Page 2330 (sim: 0.8247)
+  - USCIS Policy Manual Full 2026, PDF Page 2330 (sim: 0.8106)
+  - USCIS Policy Manual Full 2026, PDF Page 2421 (sim: 0.7968)
+
+Expanded Queries:
+  - eligibility requirements for naturalization
+  - continuous residence and physical presence requirements
+  - good moral character standards for naturalization
+
+Audit ID: 279eeb75-f96f-4709-8a8a-a94ae08aba5e
 ```
 
-### Retrieved Evidence
+### Off-topic query (insufficient confidence)
 
 ```
-USCIS Policy Manual | Volume 12 | Part D | Chapter 2
-Similarity: 0.92
+Question: What is the best pizza in New York?
 
-"A naturalization applicant must meet several statutory requirements including lawful permanent residence, continuous residence, physical presence, and good moral character."
+Confidence: INSUFFICIENT
+Top Similarity: 0.1038
+
+Answer:
+I do not have enough information from the USCIS Policy Manual
+to answer this question reliably.
+
+Sources: None
+Chunks Sent to Model: 0
 ```
-The system retrieves relevant policy sections using semantic search (pgvector + Amazon Titan embeddings) and generates grounded answers using Claude via Amazon Bedrock.
 
+The system correctly identified an off-topic question, skipped the LLM call entirely, and returned a clear fallback response. Both queries were logged to the audit trail with full traceability.
+
+---
 
 ## Engineering Design Decisions
 
+### Why PostgreSQL + pgvector (Not a Hosted Vector DB)
 
-This project intentionally prioritizes a simple, transparent RAG architecture that can run locally while demonstrating production-grade concepts.
+Using PostgreSQL with pgvector avoids external vector database dependencies, simplifies local development, and demonstrates how semantic search can run inside standard relational infrastructure. In enterprise and federal environments, adding another managed service creates procurement and compliance overhead. Keeping vectors in Postgres means one database to secure, back up, and audit. 
 
-### Why PostgreSQL + pgvector
+The IVFFLAT index accelerates approximate nearest-neighbor search with configurable probe depth for tuning recall vs. latency.
 
-Instead of using a hosted vector database, this project uses PostgreSQL with the pgvector extension.
+### Why LLM Query Rewriting (Not Hardcoded Normalization)
 
-Benefits:
+Early versions of this system used a 180-line if/elif chain to map casual language to search terms. This worked for known phrasings but failed on anything not anticipated. The current system uses Claude to rewrite user questions into precise USCIS terminology and expand them into 2-4 related queries, with a graceful fallback to the original question if the rewriter fails.
 
-• avoids external vector DB dependencies  
-• simplifies local development  
-• demonstrates how semantic search can run inside standard relational systems  
+### Why MMR Re-Ranking
 
-The IVFFLAT index is used to accelerate approximate nearest-neighbor search
-for embedding similarity queries.
+Standard cosine similarity retrieval often returns near-duplicate chunks from the same section. MMR (Maximal Marginal Relevance) balances relevance with diversity: each selected chunk must be similar to the query but dissimilar to chunks already selected. This produces a more informative context window for the LLM.
 
----
+### Why Confidence Tiers
 
-### Why Amazon Titan Embeddings
+Not all retrieval results are equal. Rather than sending low-quality context to the model and hoping for the best, this system classifies retrieval confidence into three tiers:
 
-Amazon Titan embeddings provide:
+- **High** (similarity >= 0.70): Strong match. Answer generated normally.
+- **Low** (similarity >= 0.50): Partial match. Answer prefixed with an uncertainty notice.
+- **Insufficient** (below 0.50): No usable context. Returns a clear "I don't have enough information" response without calling the LLM.
 
-• strong semantic search performance  
-• tight integration with AWS Bedrock  
-• compatibility with enterprise environments  
+This prevents hallucinations on out-of-scope questions and provides a clear confidence signal for downstream systems.
 
-Embeddings are stored as 1024-dimension vectors inside PostgreSQL.
+### Why a Quality Validation Gate
 
----
+PDF extraction is inherently noisy. Before chunks are written to the vector store, they pass through validation checks: minimum and maximum length, text-to-noise ratio, repeated character detection (corrupted OCR), heading integrity, and metadata completeness. If the overall failure rate exceeds 20%, the ingestion pipeline halts. This catches extraction problems before they degrade retrieval quality.
 
-### Why Retrieval-Augmented Generation (RAG)
+### Why a Full Audit Trail
 
-Large language models can hallucinate when answering domain-specific
-questions.
-
-RAG mitigates this risk by:
-
-1. retrieving relevant policy sections first
-2. passing those sections as context to the language model
-3. constraining the model to answer based on retrieved evidence
-
-This enables grounded answers with traceable citations.
+In regulated environments, simply returning the correct answer is not enough. You need to prove which model generated the answer, what temperature was used, which chunks informed it, what the retrieval confidence was, and what queries were actually searched. The `query_audit_log` table captures all of this for every request, indexed by a unique `query_id` for downstream traceability.
 
 ---
 
-### Section-Aware Chunking
+## Quick Start
 
-USCIS policy manuals contain long legal sections.
+### Prerequisites
 
-Instead of naive chunking, this project applies section-aware splitting
-so that semantic meaning remains intact.
+- Python 3.12+
+- Docker and Docker Compose
+- AWS account with Bedrock access (Claude Sonnet + Titan Embeddings enabled)
 
-This improves retrieval quality and reduces hallucination risk.
-
----
-
-### Context Filtering
-
-Retrieved chunks are filtered using a similarity threshold before being
-sent to the language model.
-
-This prevents irrelevant passages from polluting the prompt and improves
-answer precision.
-
----
-
-## Local Development Setup
-
-Clone the repository:
+### Setup
 
 ```bash
-git clone https://github.com/<your-username>/uscis-policy-rag.git
+git clone https://github.com/mlungu2/uscis-policy-rag.git
 cd uscis-policy-rag
-```
 
-Create a virtual environment:
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
-```
 
-Create a `.env` file based on `.env.example`:
-
-```bash
 cp .env.example .env
+# Edit .env with your AWS credentials and S3 bucket
 ```
 
-Run tests:
+### Start Infrastructure
+
 ```bash
-pytest
+make db-up          # Start PostgreSQL + pgvector
+make init-db        # Create tables and indexes
 ```
 
-## Database Setup with Docker
+### Ingest Documents
 
-Start PostgreSQL + pgvector:
+Upload the USCIS Policy Manual PDF to your S3 bucket, then:
+
+```bash
+make ingest         # Load, chunk, validate, embed, and store
+```
+
+### Run
+
+```bash
+make serve          # Start FastAPI on port 8000
+make ask            # Interactive CLI
+```
+
+### Test
+
+```bash
+make test           # Run 44 unit tests
+make evaluate       # Run evaluation harness with known Q&A pairs
+```
+
+### Full Stack (Docker)
+
+```bash
+make dev            # Build and start app + postgres
+```
+
+---
+
+## Manual Setup (Without Make)
+
+If you prefer to run commands directly instead of using the Makefile, or want to understand each step individually:
+
+### Clone and Install
+
+```bash
+git clone https://github.com/mlungu2/uscis-policy-rag.git
+cd uscis-policy-rag
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env
+# Edit .env with your AWS credentials and S3 bucket
+```
+
+### Start PostgreSQL + pgvector
 
 ```bash
 docker compose up -d
 ```
+
 Verify the container is running:
+
 ```bash
 docker ps
 ```
-Connect to PostgreSQL inside the container:
-```bash
-docker exec -it uscis-rag-postgres psql -U postgres -d uscis_rag
-```
-Enable the pgvector extension:
-```SQL
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-Verify the extension is installed:
-```sql
-\dx
-```
-Exit PostgreSQL:
-```SQL
-\q
-```
- 
-## Verify Database Connection
 
-Run the database check script:
+### Initialize the Database
+
+```bash
+python -m scripts.init_db
+```
+
+This creates the `document_chunks` table, `query_audit_log` table, and IVFFLAT vector index. To verify the schema was created:
+
+```bash
+docker exec -it uscis-rag-postgres psql -U postgres -d uscis_rag -c "\dt"
+```
+
+You should see three tables: `document_chunks`, `query_audit_log`, and `query_logs`.
+
+### Verify Database Connection
+
 ```bash
 python -m scripts.check_db
 ```
 
-## Test Document Ingestion
+### Ingest Documents
 
-Upload at least one USCIS PDF to the configured S3 bucket and prefix, then run:
+Upload at least one USCIS PDF to the configured S3 bucket and prefix, then:
 
 ```bash
-python -m scripts.test_ingestion
+python -m scripts.embed_documents
 ```
+
+This will load pages from S3, chunk them with section-aware splitting, run quality validation, and embed the valid chunks into PostgreSQL. Watch for the quality report in the output.
+
+### Start the API Server
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Test the health endpoint:
+
+```bash
+curl http://localhost:8000/health | python3 -m json.tool
+```
+
+### Run the Interactive CLI
+
+```bash
+python -m scripts.ask
+```
+
+### Run Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## API Reference
+
+### `POST /query`
+
+```json
+{
+  "question": "What are the eligibility requirements for naturalization?",
+  "top_k": 5
+}
+```
+
+**Response:**
+
+```json
+{
+  "question": "What are the eligibility requirements for naturalization?",
+  "answer": "The general eligibility requirements for naturalization...",
+  "confidence": "high",
+  "sources": [
+    {
+      "document_title": "USCIS Policy Manual Full 2026",
+      "page_number": 2330,
+      "chunk_index": 7959,
+      "similarity": 0.8247,
+      "matched_query": "eligibility requirements for naturalization"
+    }
+  ],
+  "retrieval": {
+    "total_chunks_retrieved": 5,
+    "chunks_sent_to_model": 3,
+    "top_similarity": 0.8247,
+    "confidence_level": "high",
+    "expanded_queries": [
+      "eligibility requirements for naturalization",
+      "continuous residence and physical presence requirements",
+      "good moral character standards for naturalization"
+    ]
+  },
+  "audit": {
+    "query_id": "279eeb75-f96f-4709-8a8a-a94ae08aba5e",
+    "model_id": "us.anthropic.claude-sonnet-4-6",
+    "embedding_model_id": "amazon.titan-embed-text-v2:0",
+    "temperature": 0.0,
+    "timestamp": "2026-03-16T16:53:59.622377Z"
+  }
+}
+```
+
+### `GET /health`
+
+Returns database connectivity, pgvector status, and indexed chunk count.
+
+---
+
+## Project Structure
+
+```
+uscis-policy-rag/
+├── app/
+│   ├── main.py                 # FastAPI application
+│   ├── config.py               # Pydantic settings
+│   ├── models.py               # Request/response models
+│   ├── db.py                   # Database engine + health checks
+│   ├── embeddings/
+│   │   └── titan_embedder.py   # Amazon Titan embedding client
+│   ├── ingestion/
+│   │   ├── loader.py           # S3 PDF loading + text cleaning
+│   │   ├── chunker.py          # Section-aware chunking
+│   │   └── quality.py          # Chunk quality validation
+│   ├── rag/
+│   │   ├── answer_generator.py # Orchestrator with confidence tiers
+│   │   ├── llm_client.py       # Bedrock Claude client
+│   │   ├── query_rewriter.py   # LLM-based query normalization
+│   │   └── audit.py            # Full audit trail logging
+│   └── retrieval/
+│       └── vector_search.py    # MMR re-ranking + multi-query search
+├── scripts/
+│   ├── ask.py                  # Interactive CLI
+│   ├── init_db.py              # Schema + index creation
+│   ├── embed_documents.py      # Ingestion with quality gates
+│   └── evaluate.py             # Evaluation harness
+├── tests/                      # 44 unit tests
+├── Dockerfile
+├── docker-compose.yml
+├── Makefile
+└── requirements.txt
+```
+
+---
+
+## Built by Archetype Core
+
+This project was designed and built by [Archetype Core](https://archetypecore.com) as a reference implementation of AI-ready data infrastructure for regulated environments.
+
+---

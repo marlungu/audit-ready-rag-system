@@ -1,6 +1,10 @@
+import logging
+
 import boto3
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class BedrockClaudeClient:
@@ -13,7 +17,10 @@ class BedrockClaudeClient:
         )
         self.model_id = settings.chat_model_id
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, max_tokens: int = 1024, temperature: float | None = None,) -> str:
+        if temperature is None:
+            temperature = settings.temperature
+
         response = self.client.converse(
             modelId=self.model_id,
             messages=[
@@ -23,10 +30,20 @@ class BedrockClaudeClient:
                 }
             ],
             inferenceConfig={
-                "maxTokens": 1000,
-                "temperature": 0.2,
+                "maxTokens": max_tokens,
+                "temperature": temperature,
             },
         )
 
         content = response["output"]["message"]["content"]
-        return "".join(part.get("text", "") for part in content)
+        text = "".join(part.get("text", "") for part in content)
+
+        usage = response.get("usage", {})
+        logger.debug(
+            "Bedrock generation: model=%s input_tokens=%s output_tokens=%s",
+            self.model_id,
+            usage.get("inputTokens"),
+            usage.get("outputTokens"),
+        )
+
+        return text

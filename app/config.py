@@ -30,14 +30,40 @@ class Settings(BaseSettings):
 
     # Retrieval
     top_k: int = 5
-    search_type: str = "mmr"
+    mmr_lambda: float = 0.7
+    ivfflat_probes: int = 10
+
+    # Confidence thresholds
+    high_confidence_threshold: float = 0.70
+    low_confidence_threshold: float = 0.50
+
+    # Generation
+    max_context_chunks: int = 3
+    temperature: float = 0.0
 
     # Vector store
     collection_name: str = "uscis_policy_documents"
+
+    # Quality gates
+    min_chunk_length: int = 100
+    max_chunk_length: int = 3000
+
+    # App
+    app_name: str = "USCIS Policy RAG"
+    app_version: str = "1.0.0"
+    log_level: str = "INFO"
 
     @computed_field
     @property
     def s3_uri(self) -> str:
         return f"s3://{self.s3_bucket_name}/{self.s3_prefix}"
+    
+    @computed_field
+    @property
+    def psycopg_url(self) -> str:
+        return self.postgres_url.replace(
+            "postgresql+psycopg://", "postgresql://", 1
+        )
+
 
 settings = Settings()
