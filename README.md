@@ -1,6 +1,21 @@
+# Audit-Ready RAG System
+*Applied to USCIS policy documents*
 
-# USCIS Policy RAG
-Production-grade Retrieval-Augmented Generation (RAG) system for answering questions about the USCIS Policy Manual. Designed with auditability, traceability, and reliability in mind.
+A Retrieval-Augmented Generation system designed for environments where answers must be traceable, reproducible, and defensible.
+
+It demonstrates what trustworthy AI infrastructure looks like under real-world constraints.
+
+---
+
+## Why This Exists
+
+Most RAG systems can generate answers.
+
+Very few can explain them.
+
+In regulated or high-risk environments, that’s not acceptable.
+
+This system makes every answer traceable, inspectable, and reproducible.
 
 **Stack:** AWS Bedrock (Claude Sonnet) | Amazon Titan Embeddings | PostgreSQL + pgvector | FastAPI | Docker
 
@@ -9,20 +24,20 @@ Production-grade Retrieval-Augmented Generation (RAG) system for answering quest
 
 ---
 
-## What This System Does
+## System Capabilities
 
-This system indexes the USCIS Policy Manual and answers immigration policy questions with grounded, citation-backed responses. Each response includes source citations, a confidence classification, and a query audit record.
+This system indexes the USCIS Policy Manual and answers questions with grounded, citation-backed responses.
 
-The project demonstrates how a RAG system can be built for regulated environments where answer quality and traceability are required.
+Each response includes source citations, a confidence level, and a query audit record.
 
 ### Key Capabilities
 
-- **LLM-powered query rewriting** that translates casual questions into precise immigration terminology for better retrieval
-- **Maximal Marginal Relevance (MMR) re-ranking** that selects chunks that are both relevant and diverse, reducing redundant context
-- **Three-tier confidence classification** (high, low, insufficient) that surfaces retrieval uncertainty to the end user
-- **Full audit trail** logging every query with model version, embedding model, temperature, expanded queries, and which chunks informed the answer
-- **Chunk quality validation** that catches corrupted extractions, garbled text, and missing metadata before they enter the vector store
-- **Section-aware chunking** that preserves legal document structure (Volume > Part > Chapter > subsection) during ingestion
+- **LLM-powered query rewriting** translates casual questions into precise immigration terminology  
+- **Maximal Marginal Relevance (MMR)** selects chunks that are both relevant and diverse  
+- **Three-tier confidence classification** (high, low, insufficient) indicates how reliable the retrieved results are  
+- **Full audit trail** logs every query with model version, embeddings, temperature, expanded queries, and contributing chunks  
+- **Chunk quality validation** filters out corrupted text, noisy extractions, and missing metadata before indexing  
+- **Section-aware chunking** preserves legal document structure (Volume > Part > Chapter > subsection)  
 
 ---
 
@@ -124,7 +139,9 @@ Sources: None
 Chunks Sent to Model: 0
 ```
 
-The system correctly identified an off-topic question, skipped the LLM call entirely, and returned a clear fallback response. Both queries were logged to the audit trail with full traceability.
+The system identified an off-topic question, skipped the LLM call, and returned a fallback response.
+
+Both queries were logged with full traceability.
 
 ---
 
@@ -132,7 +149,7 @@ The system correctly identified an off-topic question, skipped the LLM call enti
 
 ### Why PostgreSQL + pgvector (Not a Hosted Vector DB)
 
-Using PostgreSQL with pgvector avoids external vector database dependencies, simplifies local development, and demonstrates how semantic search can run inside standard relational infrastructure. In enterprise and federal environments, adding another managed service creates procurement and compliance overhead. Keeping vectors in Postgres means one database to secure, back up, and audit. 
+Using PostgreSQL with pgvector avoids external vector database dependencies, simplifies local development, and keeps semantic search inside standard relational infrastructure. In enterprise and federal environments, adding another managed service creates procurement and compliance overhead. Keeping vectors in Postgres means one database to secure, back up, and audit. 
 
 The IVFFLAT index accelerates approximate nearest-neighbor search with configurable probe depth for tuning recall vs. latency.
 
@@ -175,8 +192,8 @@ In regulated environments, simply returning the correct answer is not enough. Yo
 ### Setup
 
 ```bash
-git clone https://github.com/mlungu2/uscis-policy-rag.git
-cd uscis-policy-rag
+git clone https://github.com/marlungu/audit-ready-rag-system.git
+cd audit-ready-rag-system
 
 python3 -m venv venv
 source venv/bin/activate
@@ -230,8 +247,8 @@ If you prefer to run commands directly instead of using the Makefile, or want to
 ### Clone and Install
 
 ```bash
-git clone https://github.com/mlungu2/uscis-policy-rag.git
-cd uscis-policy-rag
+git clone https://github.com/marlungu/audit-ready-rag-system.git
+cd audit-ready-rag-system
 
 python3 -m venv venv
 source venv/bin/activate
@@ -366,7 +383,7 @@ Returns database connectivity, pgvector status, and indexed chunk count.
 ## Project Structure
 
 ```
-uscis-policy-rag/
+audit-ready-rag-system/
 ├── app/
 │   ├── main.py                 # FastAPI application
 │   ├── config.py               # Pydantic settings
@@ -404,3 +421,9 @@ uscis-policy-rag/
 This project was designed and built by [Archetype Core](https://archetypecore.com) as a reference implementation of AI-ready data infrastructure for regulated environments.
 
 ---
+
+## Positioning
+
+The goal of this system is not immigration.
+
+The goal is to show what it takes to build AI systems that can be trusted.
