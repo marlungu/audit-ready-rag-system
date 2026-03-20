@@ -86,6 +86,13 @@ class EvalSummary(BaseModel):
     results: list[EvalResult]
 
 
+class ChunkIssue(BaseModel):
+    chunk_index: int
+    page_number: int | None
+    issue_type: str
+    detail: str
+
+
 class ChunkQualityReport(BaseModel):
     total_chunks: int
     passed: int
@@ -94,12 +101,3 @@ class ChunkQualityReport(BaseModel):
     issues: list[ChunkIssue]
 
 
-class ChunkIssue(BaseModel):
-    chunk_index: int
-    page_number: int | None
-    issue_type: str
-    detail: str
-
-
-# Rebuild models that have forward references
-ChunkQualityReport.model_rebuild()

@@ -55,6 +55,8 @@ def initialize_database() -> None:
             )
         )
 
+        print("Database schema initialized successfully.")
+
 
 def create_vector_index() -> None:
     with engine.begin() as connection:
