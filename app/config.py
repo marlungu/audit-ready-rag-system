@@ -11,8 +11,6 @@ class Settings(BaseSettings):
 
     #AWS
     aws_region: str = "us-east-1"
-    aws_access_key_id: str
-    aws_secret_access_key: str
 
     #S3
     s3_bucket_name: str
