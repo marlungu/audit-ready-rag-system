@@ -20,7 +20,10 @@ engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def on_connect(dbapi_connection, connection_record):
-    register_vector(dbapi_connection)
+    try:
+        register_vector(dbapi_connection)
+    except Exception:
+        logger.debug("pgvector extension not yet available, skipping registration")
 
 def check_database_health() -> dict:
     """Return database health status for the /health endpoint."""

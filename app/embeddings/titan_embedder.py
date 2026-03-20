@@ -1,6 +1,11 @@
 import json
+import logging
+
 import boto3
+
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class TitanEmbedder:
@@ -13,12 +18,22 @@ class TitanEmbedder:
             aws_secret_access_key=settings.aws_secret_access_key,
         )
 
-        self.model_id = "amazon.titan-embed-text-v2:0"
+        self.model_id = settings.embedding_model_id
+        self.dimensions = settings.embedding_dimensions
+        self.normalize = settings.embedding_normalize
 
-    def embed_text(self, text: str):
+    def embed_text(self, text: str) -> list[float]:
+        """Generate a normalized embedding vector using Amazon Titan V2.
+
+        Explicitly passes dimensions and normalization to avoid relying
+        on model defaults.  Normalized vectors make cosine similarity
+        equivalent to dot product, which is faster to compute.
+        """
 
         body = {
-            "inputText": text
+            "inputText": text,
+            "dimensions": self.dimensions,
+            "normalize": self.normalize,
         }
 
         response = self.client.invoke_model(

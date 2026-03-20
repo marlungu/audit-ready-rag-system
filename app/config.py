@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     #Models
     embedding_model_id: str = "amazon.titan-embed-text-v2:0"
+    embedding_dimensions: int = 1024  # Titan V2 supports 256, 512, 1024
+    embedding_normalize: bool = True  # Unit vectors for cosine similarity
     chat_model_id: str = "us.anthropic.claude-sonnet-4-6"
 
     # Chunking
