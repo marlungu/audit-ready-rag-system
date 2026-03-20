@@ -55,25 +55,6 @@ def initialize_database() -> None:
             )
         )
 
-        # Legacy table kept for backward compatibility
-        connection.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS query_logs (
-                    id BIGSERIAL PRIMARY KEY,
-                    question TEXT NOT NULL,
-                    answer TEXT NOT NULL,
-                    model_id TEXT NOT NULL,
-                    top_k INTEGER NOT NULL,
-                    retrieved_chunks JSONB NOT NULL,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-                );
-                """
-            )
-        )
-
-        print("Database schema initialized successfully.")
-
 
 def create_vector_index() -> None:
     with engine.begin() as connection:

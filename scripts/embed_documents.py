@@ -1,4 +1,5 @@
 import logging
+import math
 import sys
 
 from sqlalchemy import text
@@ -8,6 +9,7 @@ from app.ingestion.loader import load_pdf_from_s3
 from app.ingestion.chunker import chunk_documents
 from app.ingestion.quality import validate_chunks, filter_valid_chunks
 from app.embeddings.titan_embedder import TitanEmbedder
+from app.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,17 +17,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DOCUMENT_KEY = "docs/policy-manual/uscis_policy_manual_full_2026.pdf"
-
 
 def to_pgvector_literal(vector: list[float]) -> str:
-    return "[" + ",".join(str(x) for x in vector) + "]"
-
+    """Convert a float list to a pgvector literal, rejecting non-finite values."""
+    clean = []
+    for v in vector:
+        if not math.isfinite(v):
+            raise ValueError("Embedding contains a non-finite value.")
+        clean.append(f"{v:.12f}")
+    return "[" + ",".join(clean) + "]"
 
 def main():
     logger.info("Loading pages from S3...")
-    pages = load_pdf_from_s3(DOCUMENT_KEY)
-    logger.info(f"Loaded %d cleaned pages", len(pages))
+    pages = load_pdf_from_s3(settings.s3_document_key)
+    logger.info("Loaded %d cleaned pages", len(pages))
 
     if not pages:
         logger.error("No pages were loaded from S3.")
@@ -109,7 +114,7 @@ def main():
             inserted += 1
 
             if i % 25 == 0 or i == len(valid_chunks):
-                logger.info(f"Inserted %d/%d chunks", i, len(valid_chunks))
+                logger.info("Done. Inserted %d/%d chunks", i, len(valid_chunks))
 
     logger.info("Done. Inserted %d chunks into document_chunks.", inserted)
 

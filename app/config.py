@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     #S3
     s3_bucket_name: str
     s3_prefix: str = "docs/"
+    s3_document_key: str = "docs/policy-manual/uscis_policy_manual_full_2026.pdf"
 
     #Database
     postgres_url: str

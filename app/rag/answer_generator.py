@@ -159,7 +159,7 @@ class AnswerGenerator:
             temperature=settings.temperature,
         )
 
-         # Build response
+        # Build response
         sources = [
             SourceReference(
                 document_title=c["metadata"]["document_title"],

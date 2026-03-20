@@ -7,11 +7,22 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.config import settings
 
 
-HEADING_PATTERNS = [
-    r"^\s*Volume\s+\d+\b.*$",
-    r"^\s*Part\s+[A-Z]\b.*$",
-    r"^\s*Chapter\s+\d+\b.*$",
-    r"^\s*[A-Z]\.\s+.*$",
+# Pre-compiled heading patterns for document structure detection
+RE_VOLUME = re.compile(r"^\s*Volume\s+\d+\b.*$", re.IGNORECASE)
+RE_PART = re.compile(r"^\s*Part\s+[A-Z]\b.*$", re.IGNORECASE)
+RE_CHAPTER = re.compile(r"^\s*Chapter\s+\d+\b.*$", re.IGNORECASE)
+RE_SUBSECTION = re.compile(r"^\s*[A-Z]\.\s+.*$", re.IGNORECASE)
+
+HEADING_PATTERNS = [RE_VOLUME, RE_PART, RE_CHAPTER, RE_SUBSECTION]
+
+SKIP_PATTERNS = [
+    re.compile(r"^\s*Affected Sections\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Read More\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Policy Manual \| USCIS\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Search USCIS Policy Manual Search\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Current as of.*$", re.IGNORECASE),
+    re.compile(r"^\s*\d{1,2}/\d{1,2}/\d{2,4},.*$", re.IGNORECASE),
+    re.compile(r"^\s*https?://.*$", re.IGNORECASE),
 ]
 
 
@@ -22,23 +33,13 @@ def clean_text(text: str) -> str:
     lines = text.splitlines()
     cleaned_lines = []
 
-    skip_patterns = [
-        r"^\s*Affected Sections\s*$",
-        r"^\s*Read More\s*$",
-        r"^\s*Policy Manual \| USCIS\s*$",
-        r"^\s*Search USCIS Policy Manual Search\s*$",
-        r"^\s*Current as of.*$",
-        r"^\s*\d{1,2}/\d{1,2}/\d{2,4},.*$",
-        r"^\s*https?://.*$",
-    ]
-
     for line in lines:
         line = line.strip()
 
         if not line:
             continue
 
-        if any(re.match(pattern, line, re.IGNORECASE) for pattern in skip_patterns):
+        if any(pattern.match(line) for pattern in SKIP_PATTERNS):
             continue
 
         cleaned_lines.append(line)
@@ -47,8 +48,7 @@ def clean_text(text: str) -> str:
 
 
 def is_heading(line: str) -> bool:
-    return any(re.match(pattern, line, re.IGNORECASE) for pattern in HEADING_PATTERNS)
-
+    return any(pattern.match(line) for pattern in HEADING_PATTERNS)
 
 
 def build_sections(pages: List[Document]) -> List[Document]:
@@ -95,26 +95,26 @@ def build_sections(pages: List[Document]) -> List[Document]:
 
         for line in lines:
             if is_heading(line):
-                if re.match(r"^\s*Volume\s+\d+\b.*$", line, re.IGNORECASE):
+                if RE_VOLUME.match(line):
                     flush_section()
                     current_heading_parts = [line]
                     current_metadata = page.metadata.copy()
-                elif re.match(r"^\s*Part\s+[A-Z]\b.*$", line, re.IGNORECASE):
+                elif RE_PART.match(line):
                     flush_section()
                     current_heading_parts = [
                         h for h in current_heading_parts
-                        if not re.match(r"^\s*Part\s+[A-Z]\b.*$", h, re.IGNORECASE)
-                        and not re.match(r"^\s*Chapter\s+\d+\b.*$", h, re.IGNORECASE)
-                        and not re.match(r"^\s*[A-Z]\.\s+.*$", h, re.IGNORECASE)
+                        if not RE_PART.match(h)
+                        and not RE_CHAPTER.match(h)
+                        and not RE_SUBSECTION.match(h)
                     ]
                     current_heading_parts.append(line)
                     current_metadata = page.metadata.copy()
-                elif re.match(r"^\s*Chapter\s+\d+\b.*$", line, re.IGNORECASE):
+                elif RE_CHAPTER.match(line):
                     flush_section()
                     current_heading_parts = [
                         h for h in current_heading_parts
-                        if not re.match(r"^\s*Chapter\s+\d+\b.*$", h, re.IGNORECASE)
-                        and not re.match(r"^\s*[A-Z]\.\s+.*$", h, re.IGNORECASE)
+                        if not RE_CHAPTER.match(h)
+                        and not RE_SUBSECTION.match(h)
                     ]
                     current_heading_parts.append(line)
                     current_metadata = page.metadata.copy()
@@ -122,7 +122,7 @@ def build_sections(pages: List[Document]) -> List[Document]:
                     flush_section()
                     current_heading_parts = [
                         h for h in current_heading_parts
-                        if not re.match(r"^\s*[A-Z]\.\s+.*$", h, re.IGNORECASE)
+                        if not RE_SUBSECTION.match(h)
                     ]
                     current_heading_parts.append(line)
                     current_metadata = page.metadata.copy()
