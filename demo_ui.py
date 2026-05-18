@@ -39,6 +39,13 @@ st.markdown(
 st.title("USCIS Policy Assistant")
 st.caption("Audit-Ready RAG System — Archetype Core")
 
+
+# ── Sidebar callbacks ────────────────────────────────────────
+def set_question(q):
+    st.session_state["question_field"] = q
+    # st.session_state["auto_submit"] = True
+
+
 # ── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### Settings")
@@ -57,16 +64,14 @@ with st.sidebar:
     ]
 
     for q in sample_questions:
-        if st.button(q, key=q, use_container_width=True):
-            st.session_state["question_input"] = q
+        st.button(q, key=q, use_container_width=True, on_click=set_question, args=(q,))
 
     st.markdown("---")
     st.markdown("### System Health")
     try:
         health = requests.get(f"{API_URL}/health", timeout=3).json()
         st.markdown(f"**Status:** {health.get('status', 'unknown')}")
-        st.markdown(
-            f"**Chunks indexed:** {health.get('database', {}).get('indexed_chunks', 'N/A') if isinstance(health.get('database'), dict) else 'N/A'}"
+        st.markdown(f"**Chunks indexed:** {health.get('database', {}).get('indexed_chunks', 'N/A') if isinstance(health.get('database'), dict) else 'N/A'}"
         )
     except Exception:
         st.error("API not reachable. Is the server running?")
@@ -82,6 +87,11 @@ question = st.text_input(
 col_btn, col_spacer = st.columns([1, 4])
 with col_btn:
     submitted = st.button("Ask", type="primary", use_container_width=True)
+
+# Auto-submit when a sidebar button was clicked
+# if st.session_state.get("auto_submit"):
+#     submitted = True
+#     st.session_state["auto_submit"] = False
 
 # ── Query + Display ──────────────────────────────────────────
 if submitted and question:

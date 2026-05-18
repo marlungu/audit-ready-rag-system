@@ -27,6 +27,8 @@ services:
       - .env
     environment:
       POSTGRES_URL: "postgresql+psycopg://postgres:postgres@postgres:5432/uscis_rag"
+    volumes:
+      - ~/.aws:/root/.aws:ro
     depends_on:
       postgres:
         condition: service_healthy
