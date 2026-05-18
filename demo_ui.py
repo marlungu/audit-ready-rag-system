@@ -70,9 +70,11 @@ with st.sidebar:
     st.markdown("### System Health")
     try:
         health = requests.get(f"{API_URL}/health", timeout=3).json()
+        db = health.get("database", {})
         st.markdown(f"**Status:** {health.get('status', 'unknown')}")
-        st.markdown(f"**Chunks indexed:** {health.get('database', {}).get('indexed_chunks', 'N/A') if isinstance(health.get('database'), dict) else 'N/A'}"
-        )
+        st.markdown(f"**Database:** {db.get('status', 'unknown')}")
+        st.markdown(f"**Chunks indexed:** {db.get('indexed_chunks', 'N/A'):,}")
+        st.markdown(f"**pgvector:** {'enabled' if db.get('pgvector_enabled') else 'N/A'}")
     except Exception:
         st.error("API not reachable. Is the server running?")
 

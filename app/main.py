@@ -57,7 +57,7 @@ def health():
     return HealthResponse(
         status=db_health["status"],
         version=settings.app_version,
-        database=db_health.get("status", "unknown"),
+        database=db_health,
         timestamp=datetime.now(timezone.utc),
     )
 

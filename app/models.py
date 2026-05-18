@@ -12,10 +12,17 @@ class ConfidenceLevel(str, enum.Enum):
     INSUFFICIENT = "insufficient"
 
 
+class DatabaseHealth(BaseModel):
+    status: str
+    postgres_version: str | None = None
+    pgvector_enabled: bool | None = None
+    indexed_chunks: int | None = None
+
+    
 class HealthResponse(BaseModel):
     status: str
     version: str
-    database: str
+    database: DatabaseHealth
     timestamp: datetime
 
 
