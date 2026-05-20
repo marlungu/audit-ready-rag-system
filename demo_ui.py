@@ -5,10 +5,11 @@ Run the FastAPI server first (make serve), then:
     streamlit run demo_ui.py
 """
 
+import os
 import streamlit as st
 import requests
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 
 # ── Page config ──────────────────────────────────────────────
 st.set_page_config(
