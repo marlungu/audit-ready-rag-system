@@ -63,13 +63,21 @@ def create_vector_index() -> None:
         connection.execute(
             text(
                 """
-                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
-                ON document_chunks
-                USING ivfflat (embedding vector_cosine_ops)
-                WITH (lists = 50);
+                DROP INDEX IF EXISTS idx_document_chunks_embedding_ivfflat;
                 """
             )
         )
+
+        connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
+                ON document_chunks
+                USING hnsw (embedding vector_cosine_ops);
+                """
+            )
+        )
+
 
         connection.execute(
             text(

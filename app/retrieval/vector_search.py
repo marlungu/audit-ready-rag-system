@@ -3,9 +3,10 @@ from typing import Any
 import math
 
 import numpy as np
-import psycopg
+from sqlalchemy import text
 
 from app.config import settings
+from app.db import engine
 from app.embeddings.titan_embedder import TitanEmbedder
 from app.rag.query_rewriter import QueryRewriter
 
@@ -109,49 +110,54 @@ class VectorSearcher:
             chunk_index,
             content,
             embedding::text,
-            embedding <=> %s::vector AS distance
+            embedding <=> CAST(:embedding AS vector) AS distance
         FROM document_chunks
-        ORDER BY embedding <=> %s::vector
-        LIMIT %s
+        ORDER BY embedding <=> CAST(:embedding AS vector)
+        LIMIT :limit
         """
 
         best: dict[tuple[str, int, int], dict[str, Any]] = {}
 
-        with psycopg.connect(settings.psycopg_url) as conn:
-            with conn.cursor() as cur:
-                probes = int(settings.ivfflat_probes)
-                probes = max(1, min(probes, 1000))
+        with engine.connect() as conn:
+            probes = int(settings.ivfflat_probes)
+            probes = max(1, min(probes, 1000))
+            try:
+                conn.execute(text(f"SET ivfflat.probes = {probes};"))
+            except Exception:
+                logger.debug("Failed to set ivfflat.probes, possibly using HNSW index.")
 
-                cur.execute(f"SET ivfflat.probes ={probes};")
+            for query_text in queries:
+                embedding = self.embedder.embed_text(query_text)
+                literal = self._to_vector_literal(embedding)
 
-                for query_text in queries:
-                    embedding = self.embedder.embed_text(query_text)
-                    literal = self._to_vector_literal(embedding)
+                result = conn.execute(
+                    text(sql),
+                    {
+                        "embedding": literal,
+                        "limit": int(candidate_pool_size),
+                    }
+                )
+                rows = result.all()
 
-                    cur.execute(
-                        sql, (literal, literal, int(candidate_pool_size))
-                    )
-                    rows = cur.fetchall()
+                for row in rows:
+                    distance = float(row[5])
+                    similarity = 1 - distance
+                    key = (row[0], row[1], row[2])
 
-                    for row in rows:
-                        distance = float(row[5])
-                        similarity = 1 - distance
-                        key = (row[0], row[1], row[2])
-
-                        if key not in best or similarity > best[key]["similarity"]:
-                            raw_embedding = self._parse_pg_vector(row[4])
-                            best[key] = {
-                                "content": row[3],
-                                "metadata": {
-                                    "document_title": row[0],
-                                    "page_number": row[1],
-                                    "chunk_index": row[2],
-                                },
-                                "embedding": raw_embedding,
-                                "distance": distance,
-                                "similarity": similarity,
-                                "matched_query": query_text,
-                            }
+                    if key not in best or similarity > best[key]["similarity"]:
+                        raw_embedding = self._parse_pg_vector(row[4])
+                        best[key] = {
+                            "content": row[3],
+                            "metadata": {
+                                "document_title": row[0],
+                                "page_number": row[1],
+                                "chunk_index": row[2],
+                            },
+                            "embedding": raw_embedding,
+                            "distance": distance,
+                            "similarity": similarity,
+                            "matched_query": query_text,
+                        }
 
         return sorted(
             best.values(), key=lambda r: r["similarity"], reverse=True

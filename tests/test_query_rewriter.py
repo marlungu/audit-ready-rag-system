@@ -50,3 +50,13 @@ class TestQueryRewriterParsing:
 
         queries = rewriter.rewrite("test")
         assert len(queries) <= 4
+
+    def test_parse_json_with_surrounding_conversational_text(self):
+        rewriter = QueryRewriter(llm=MagicMock())
+        result = rewriter._parse_response(
+            "Certainly! Here is the requested search query expansion:\n"
+            '{"normalized": "robust parsing query", "expanded": ["query A", "query B"]}\n'
+            "Hope this helps!"
+        )
+        assert result["normalized"] == "robust parsing query"
+        assert result["expanded"] == ["query A", "query B"]

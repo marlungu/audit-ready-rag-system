@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from app.rag.llm_client import BedrockClaudeClient
 
@@ -70,6 +71,14 @@ class QueryRewriter:
 
     def _parse_response(self, raw: str) -> dict:
         """Extract JSON from the LLM response, handling markdown fences."""
+        # Try extracting outer JSON block if there is surrounding conversational text
+        match = re.search(r"(\{.*\})", raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except Exception:
+                logger.debug("Failed parsing regex-matched JSON, falling back to string stripping.")
+
         text = raw.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[-1]
