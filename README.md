@@ -54,7 +54,7 @@ subgraph INGEST["Offline Ingestion Pipeline"]
     QA["Quality Validation\nGate"]
     EMBED["Titan Embeddings\n(1024-dim)"]
     STORE[("PostgreSQL\n+ pgvector")]
-    INDEX["IVFFLAT\nVector Index"]
+    INDEX["HNSW\nVector Index"]
 
     S3 --> LOAD --> CLEAN --> SECTION --> QA --> EMBED --> STORE --> INDEX
 end
@@ -151,7 +151,7 @@ Both queries were logged with full traceability.
 
 Using PostgreSQL with pgvector avoids external vector database dependencies, simplifies local development, and keeps semantic search inside standard relational infrastructure. In enterprise and federal environments, adding another managed service creates procurement and compliance overhead. Keeping vectors in Postgres means one database to secure, back up, and audit. 
 
-The IVFFLAT index accelerates approximate nearest-neighbor search with configurable probe depth for tuning recall vs. latency.
+The HNSW index accelerates approximate nearest-neighbor search, providing maintenance-free updates and superior recall at scale.
 
 ### Why LLM Query Rewriting (Not Hardcoded Normalization)
 
@@ -276,7 +276,7 @@ docker ps
 python -m scripts.init_db
 ```
 
-This creates the `document_chunks` table, `query_audit_log` table, and IVFFLAT vector index. To verify the schema was created:
+This creates the `document_chunks` table, `query_audit_log` table, and HNSW vector index. To verify the schema was created:
 
 ```bash
 docker exec -it uscis-rag-postgres psql -U postgres -d uscis_rag -c "\dt"
